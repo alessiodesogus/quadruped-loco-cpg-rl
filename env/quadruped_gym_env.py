@@ -119,14 +119,14 @@ class QuadrupedGymEnv(gym.Env):
       isRLGymInterface=True,
       time_step=0.001,
       action_repeat=10,  
-      motor_control_mode="PD",
+      motor_control_mode="CPG",
       task_env="FWD_LOCOMOTION",
-      observation_space_mode="DEFAULT",
+      observation_space_mode="LR_COURSE_OBS",
       on_rack=False,
       render=False,
       record_video=False,
       add_noise=True,
-      terrain=None,
+      terrain="SLOPES",  
       test_flagrun=False, 
       **kwargs): # any extra arguments from legacy
     """Initialize the quadruped gym environment.
@@ -214,35 +214,35 @@ class QuadrupedGymEnv(gym.Env):
       # [TODO] Set observation upper and lower ranges. What are reasonable limits? 
       # Note 50 is arbitrary below, you may have more or less 
       # if using CPG-RL, remember to include limits on these
-      observation_high = np.concatenate((
-          np.full(len(self.robot.GetMotorAngles()), self._robot_config.UPPER_ANGLE_JOINT), # Joint angle limits
-          np.full(len(self.robot.GetMotorVelocities()), self._robot_config.VELOCITY_LIMITS), # Velocity limits
-          np.full(len(self.robot.GetMotorTorques()), self._robot_config.TORQUE_LIMITS),    # Torque limits
+      observation_high = (np.concatenate((
+          self._robot_config.UPPER_ANGLE_JOINT, # Joint angle limits
+          self._robot_config.VELOCITY_LIMITS, # Velocity limits
+          self._robot_config.TORQUE_LIMITS,    # Torque limits
           np.array([50.0, 50.0, 50.0]),                                                    # Position limits (x, y, z)
-          np.array([-1.0]*4),                                                              # Quaternion limits
+          np.array([1.0]*4),                                                              # Quaternion limits
           np.array([10.0, 10.0, 10.0]),                                                    # Linear velocity limits
           np.array([50.0, 50.0, 50.0]),                                                    # Angular velocity limits                             # Normal force limits
-          np.array([1.0] * len(self.robot.GetContactInfo()[3])),                           # Contact status (binary)
+          np.array([1.0]*4),                                                                # Contact status (binary)
           np.array([4.0]*4),                                                                 # CPG states (r)
-          np.array([0.0]*4),                                                                 # CPG states (theta)
-          np.array([-50.0]*4),                                                               # CPG states (dr)
-          np.array([-50.0]*4)                                                                # CPG states (dtheta)
-      )) + OBSERVATION_EPS
+          np.array([2*np.pi]*4),                                                                 # CPG states (theta)
+          np.array([50.0]*4),                                                               # CPG states (dr)
+          np.array([50.0]*4)                                                                # CPG states (dtheta)
+      )) + OBSERVATION_EPS)
 
-      observation_low = np.concatenate((
-          np.full(len(self.robot.GetMotorAngles()), self._robot_config.LOWER_ANGLE_JOINT),  # Joint angle limits
-          np.full(len(self.robot.GetMotorVelocities()), -self._robot_config.VELOCITY_LIMITS), # Velocity limits
-          np.full(len(self.robot.GetMotorTorques()), -self._robot_config.TORQUE_LIMITS),    # Torque limits
+      observation_low = (np.concatenate((
+          self._robot_config.LOWER_ANGLE_JOINT,  # Joint angle limits
+          -self._robot_config.VELOCITY_LIMITS, # Velocity limits
+          -self._robot_config.TORQUE_LIMITS,    # Torque limits
           np.array([-50.0, -50.0, -50.0]),                                                  # Position limits (x, y, z)
           np.array([-1.0]*4),                                                               # Quaternion limits
           np.array([-10.0, -10.0, -10.0]),                                                  # Linear velocity limits
           np.array([-50.0, -50.0, -50.0]),                                                  # Angular velocity limits                               # Normal force limits
-          np.array([0.0] * len(self.robot.GetContactInfo()[3])),                            # Contact status (binary) 
+          np.array([0.0]*4),                            # Contact status (binary) 
           np.array([1.0]*4),                                                                  # CPG states (r)
-          np.array([2*np.pi]*4),                                                              # CPG states (theta)
-          np.array([50.0]*4),                                                                 # CPG states (dr)
-          np.array([50.0]*4)                                                                  # CPG states (dtheta)
-      )) - OBSERVATION_EPS
+          np.array([0.0]*4),                                                              # CPG states (theta)
+          np.array([-50.0]*4),                                                                 # CPG states (dr)
+          np.array([-50.0]*4)                                                                  # CPG states (dtheta)
+      )) - OBSERVATION_EPS)
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -519,14 +519,16 @@ class QuadrupedGymEnv(gym.Env):
     # loop through each leg
     for i in range(4):
       # get desired foot i pos (xi, yi, zi)
+      tau = np.zeros(3)
       x = xs[i]
       y = sideSign[i] * foot_y # careful of sign
       z = zs[i]
 
+      leg_xyz = np.array([x,y,z])
       # call inverse kinematics to get corresponding joint angles
-      q_des = self.robot.ComputeInverseKinematics(legID=i, xyz_coord=desired_position) # [TODO]
+      q_des = self.robot.ComputeInverseKinematics(legID=i, xyz_coord=leg_xyz) # [TODO]
       # Add joint PD contribution to tau 
-      tau = kp * (q_des - q[3 * i:3 * i + 3]) - kd * dq[3 * i:3 * i + 3] # [TODO] 
+      tau += kp[3*i:3*i+3] * (q_des - q[3*i:3*i+3]) + kd[3*i:3*i+3] * (-dq[3*i:3*i+3])
 
       # add Cartesian PD contribution (as you wish) in the big formula we have both contribution this part would add the part from above (fucntion : ScaleActionToCartesianPos ) in a cpg state modulation: see new code:
                   #   # Cartesian PD contribution
