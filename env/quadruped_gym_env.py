@@ -126,7 +126,7 @@ class QuadrupedGymEnv(gym.Env):
       render=False,
       record_video=False,
       add_noise=True,
-      terrain="SLOPES",  
+      terrain=False,  
       test_flagrun=False, 
       **kwargs): # any extra arguments from legacy
     """Initialize the quadruped gym environment.
@@ -390,7 +390,7 @@ class QuadrupedGymEnv(gym.Env):
       """Reward function for navigating a course with improved efficiency."""
       # [TODO] add your reward function. 
       # 1. Forward locomotion (default terms)
-      vel_tracking_reward = np.clip(self.robot.GetBaseLinearVelocity()[0], 0.2, 1.0)
+      vel_tracking_reward = 0.1 * np.clip(self.robot.GetBaseLinearVelocity()[0], 0.2, 1.0)
       
       # 2. Minimize yaw (go straight)
       yaw_reward = np.abs(self.robot.GetBaseOrientationRollPitchYaw()[2])
@@ -406,13 +406,19 @@ class QuadrupedGymEnv(gym.Env):
       # 5. Stability reward
       stability_penalty = np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0, 0, 0, 1]))
 
+      # 6. Terminal reward
+      terminal_reward = 0
+      if self._termination():
+          terminal_reward = 1
+
       # Combine rewards
       reward = (
-          0.01 * vel_tracking_reward +
+          0.1 * vel_tracking_reward +
           -0.2 * yaw_reward +
           -0.01 * drift_reward +
-          - 0.001 * energy_reward +
-          -0.1 * stability_penalty
+          -0.001 * energy_reward +
+          -0.5 * stability_penalty
+          - 1.0 * terminal_reward
       )
 
       return max(reward, 0)  # Keep rewards positive
