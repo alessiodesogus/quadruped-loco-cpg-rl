@@ -117,7 +117,7 @@ class QuadrupedGymEnv(gym.Env):
       self,
       robot_config=robot_config,
       isRLGymInterface=True,
-      time_step=0.001,
+      time_step=0.001, 
       action_repeat=10,  
       motor_control_mode="CPG",
       task_env="FWD_LOCOMOTION",
@@ -126,7 +126,7 @@ class QuadrupedGymEnv(gym.Env):
       render=False,
       record_video=False,
       add_noise=True,
-      terrain=False,  
+      terrain="SLOPES",  
       test_flagrun=False, 
       **kwargs): # any extra arguments from legacy
     """Initialize the quadruped gym environment.
@@ -215,33 +215,27 @@ class QuadrupedGymEnv(gym.Env):
       # Note 50 is arbitrary below, you may have more or less 
       # if using CPG-RL, remember to include limits on these
       observation_high = (np.concatenate((
-          self._robot_config.UPPER_ANGLE_JOINT, # Joint angle limits
-          self._robot_config.VELOCITY_LIMITS, # Velocity limits
-          self._robot_config.TORQUE_LIMITS,    # Torque limits
-          np.array([50.0, 50.0, 50.0]),                                                    # Position limits (x, y, z)
+          self._robot_config.UPPER_ANGLE_JOINT,                                           # Joint angle limits
+          self._robot_config.VELOCITY_LIMITS,                                             # Velocity limits
+          self._robot_config.TORQUE_LIMITS,                                               # Torque limits
           np.array([1.0]*4),                                                              # Quaternion limits
-          np.array([10.0, 10.0, 10.0]),                                                    # Linear velocity limits
-          np.array([50.0, 50.0, 50.0]),                                                    # Angular velocity limits                             # Normal force limits
-          np.array([1.0]*4),                                                                # Contact status (binary)
-          np.array([4.0]*4),                                                                 # CPG states (r)
-          np.array([2*np.pi]*4),                                                                 # CPG states (theta)
-          np.array([50.0]*4),                                                               # CPG states (dr)
-          np.array([50.0]*4)                                                                # CPG states (dtheta)
+          np.array([1.0]*4),                                                              # Contact status (binary)
+          np.array([4.0]*4),                                                              # CPG states (r)
+          np.array([2*np.pi]*4),                                                          # CPG states (theta)
+          np.array([20.0]*4),                                                             # CPG states (dr)
+          np.array([40.0]*4)                                                              # CPG states (dtheta)
       )) + OBSERVATION_EPS)
 
       observation_low = (np.concatenate((
-          self._robot_config.LOWER_ANGLE_JOINT,  # Joint angle limits
-          -self._robot_config.VELOCITY_LIMITS, # Velocity limits
-          -self._robot_config.TORQUE_LIMITS,    # Torque limits
-          np.array([-50.0, -50.0, -50.0]),                                                  # Position limits (x, y, z)
-          np.array([-1.0]*4),                                                               # Quaternion limits
-          np.array([-10.0, -10.0, -10.0]),                                                  # Linear velocity limits
-          np.array([-50.0, -50.0, -50.0]),                                                  # Angular velocity limits                               # Normal force limits
-          np.array([0.0]*4),                            # Contact status (binary) 
-          np.array([1.0]*4),                                                                  # CPG states (r)
+          self._robot_config.LOWER_ANGLE_JOINT,                                           # Joint angle limits
+          -self._robot_config.VELOCITY_LIMITS,                                            # Velocity limits
+          -self._robot_config.TORQUE_LIMITS,                                              # Torque limits
+          np.array([-1.0]*4),                                                             # Quaternion limits
+          np.array([0.0]*4),                                                              # Contact status (binary) 
+          np.array([-1.0]*4),                                                              # CPG states (r)
           np.array([0.0]*4),                                                              # CPG states (theta)
-          np.array([-50.0]*4),                                                                 # CPG states (dr)
-          np.array([-50.0]*4)                                                                  # CPG states (dtheta)
+          np.array([-20.0]*4),                                                            # CPG states (dr)
+          np.array([-40.0]*4)                                                             # CPG states (dtheta)
       )) - OBSERVATION_EPS)
 
     else:
@@ -275,15 +269,13 @@ class QuadrupedGymEnv(gym.Env):
       self._observation = np.concatenate((self.robot.GetMotorAngles(),                  # Motor angles
                                           self.robot.GetMotorVelocities(),              # Motor velocities
                                           self.robot.GetMotorTorques(),                 # Motor torques
-                                          self.robot.GetBasePosition(),                 # Base position (x, y, z)
                                           self.robot.GetBaseOrientation(),              # Base orientation quaternion
-                                          self.robot.GetBaseLinearVelocity(),           # Linear velocity of base
-                                          self.robot.GetBaseAngularVelocity(),          # Angular velocity of base
-                                          self.robot.GetContactInfo()[3],               # Boolean contact status for each foot
+                                          self.robot.GetContactInfo()[3], #,            # contact status for each foot
                                           self._cpg.get_r(),                            # CPG states (r)
                                           self._cpg.get_theta(),                        # CPG states (theta)
                                           self._cpg.get_dr(),                           # CPG states (dr)
-                                          self._cpg.get_dtheta()))                      # CPG states (dtheta)                  
+                                          self._cpg.get_dtheta()))                      # CPG states (dtheta) 
+      # ))                 
 
     else:
       raise ValueError("observation space not defined or not intended")
@@ -341,7 +333,14 @@ class QuadrupedGymEnv(gym.Env):
             + yaw_reward \
             + drift_reward \
             - 0.01 * energy_reward \
-            - 0.1 * np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0,0,0,1]))
+            - 0.01 * np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0,0,0,1]))
+
+    #print("vel_tracking_reward:", vel_tracking_reward)
+    #print("yaw_reward:", yaw_reward)
+    #print("drift_reward:", drift_reward)
+    #print("energy_reward:", -0.01*energy_reward)
+    #print("stability_penalty:", - 0.1 * np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0,0,0,1])))
+    #print("speed =", self.robot.GetBaseLinearVelocity()[0])
 
     return max(reward,0) # keep rewards positive
 
@@ -386,42 +385,90 @@ class QuadrupedGymEnv(gym.Env):
     
     return max(reward,0) # keep rewards positive
     
-  def _reward_lr_course(self):
+  def _reward_lr_course(self,des_vel_x=0.8):
       """Reward function for navigating a course with improved efficiency."""
       # [TODO] add your reward function. 
-      # 1. Forward locomotion (default terms)
-      vel_tracking_reward = np.clip(self.robot.GetBaseLinearVelocity()[0], 0.2, 1.0)
-      
-      # 2. Minimize yaw (go straight)
-      yaw_reward = np.abs(self.robot.GetBaseOrientationRollPitchYaw()[2])
 
-      # 3. Don't drift laterally
-      drift_reward = abs(self.robot.GetBasePosition()[1])
+      # 1. Velocity tracking (default terms)
+      vel_tracking =  np.exp( -1/ 0.25 *  (self.robot.GetBaseLinearVelocity()[0] - des_vel_x)**2 )   
 
-      # 4. Minimize energy consumption
-      energy_reward = 0
+      # 2. Yaw (around z)
+      yaw = np.abs(self.robot.GetBaseOrientationRollPitchYaw()[2])
+
+      # 3. Drift (in y)
+      drift = abs(self.robot.GetBasePosition()[1])
+
+      # 4. Energy
+      energy = 0
       for tau, vel in zip(self._dt_motor_torques, self._dt_motor_velocities):
-          energy_reward += np.abs(np.dot(tau, vel)) * self._time_step
+          energy += np.abs(np.dot(tau, vel)) * self._time_step
 
-      # 5. Stability reward
-      stability_penalty = np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0, 0, 0, 1]))
+      # 5. Orientation
+      orientation = np.linalg.norm(self.robot.GetBaseOrientation() - np.array([0, 0, 0, 1])) #quaternion (o,o,o,1)= à plat
+      orientation_noz = np.linalg.norm(self.robot.GetBaseOrientation()[:3] - np.array([0, 0, 0]))
+      #6 Height (for fwd loc)
+      z0 = 0.305
+      height = (z0 - self.robot.GetBasePosition()[1])**2
 
-      # 6. Terminal reward
-      # terminal_reward = 0
-      # if self._termination():
-      #     terminal_reward = 1
+      #7. Roll (around x)
+      roll = np.abs(self.robot.GetBaseOrientationRollPitchYaw()[0])
 
-      # Combine rewards
-      reward = (
-          0.1 * vel_tracking_reward +
-          -0.2 * yaw_reward +
-          -0.01 * drift_reward +
-          - 0.01 * energy_reward +
-          # - 1.0 * terminal_reward
-          - 0.1 * stability_penalty
-      )
+      #7. Pitch (around y)
+      pitch = np.abs(self.robot.GetBaseOrientationRollPitchYaw()[1])
 
+      #8. distance from origin
+      x_distance = self.robot.GetBasePosition()[0]
+
+      # reward flat 
+      #reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.8*orientation -0.1*height)
+
+      # reward slope 
+      reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.8*orientation -0.2*height +0.1*x_distance)
+
+
+      # Combine forward reward
+      #reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.5*orientation -0.1*height)
+
+      #combine slopes reward
+      #reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.8*orientation -0.1*height + 0.01*x_distance)
+      #reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.8*orientation -0.1*height)
+
+
+      #reward = (0.5*vel_tracking -0.2*yaw -0.01*drift -0.01*energy -0.05*orientation -0.1*roll)
+      #print("reward:", reward)
+
+
+ #     print("velocity:", self.robot.GetBaseLinearVelocity())
+ #     print("old_reward:",reward - goal_reward)
+ #     print("new_reward:",reward)
+  #    print("result:", result)
+   #   print("goal_reward:", goal_reward)
+      
+    #  list1 = goal
+    #  list2 = list(self.robot.GetBasePosition()[:2])
+    #  result = [a - b for a, b in zip(list1, list2)]
+   #   print("goal_reward:", 1/5*(np.sum(result)))
+   #   print(self.robot.GetBasePosition()[:2])
+      #print(self.robot.GetBasePosition())
+       # faire pente avec les 3 modes; etre sur que cpg ça marche et le reste hassoul mais bien si ça marche 
+      #print("episode reward=",episode_reward)
+   #   print("vel_tracking_reward:", vel_tracking_reward)
+    #  print("yaw_reward:", yaw_reward)
+     # print("drift_reward:", drift_reward)
+      #print("energy_reward:", -0.01*energy_reward)
+     # print("stability_penalty:", -0.1*stability_penalty)
+      #print("contact_reward=",contact_reward)
       return max(reward, 0)  # Keep rewards positive
+  '''
+    print("vel_tracking_reward:", 0.1*vel_tracking_reward)
+    print("yaw_reward:", -0.2*yaw_reward)
+    print("drift_reward:", -0.1*drift_reward)
+    print("energy_reward:", -0.05*energy_reward)
+    print("terminal_reward:", -1*terminal_reward)
+    print("stability_penalty:", -0.2*stability_penalty)
+    print("episode_lenght_reward:", 5*episode_reward)
+  '''
+
 
   def _reward(self):
     """ Get reward depending on task"""
@@ -458,42 +505,51 @@ class QuadrupedGymEnv(gym.Env):
     return np.clip(new_a, lower_lim, upper_lim)
 
   def ScaleActionToCartesianPos(self,actions):
-    """Scale RL action to Cartesian PD ranges. 
-    Edit ranges, limits etc., but make sure to use Cartesian PD to compute the torques. 
-    """
-    # clip RL actions to be between -1 and 1 (standard RL technique)
-    u = np.clip(actions,-1,1)
-    # scale to corresponding desired foot positions (i.e. ranges in x,y,z we allow the agent to choose foot positions)
-    # [TODO: edit (do you think these should these be increased? How limiting is this?)]
-    scale_array = np.array([0.3, 0.15, 0.24]*4) #i suggest we triple these dimensions scale_array = np.array([0.1, 0.05, 0.08]*4)--->scale_array = np.array([0.3, 0.15, 0.24]*4)
-    # add to nominal foot position in leg frame (what are the final ranges?)
-    des_foot_pos = self._robot_config.NOMINAL_FOOT_POS_LEG_FRAME + scale_array*u
+      """Scale RL action to Cartesian PD ranges. 
+      Edit ranges, limits etc., but make sure to use Cartesian PD to compute the torques. 
+      """
+      # clip RL actions to be between -1 and 1 (standard RL technique)
+      u = np.clip(actions,-1,1)
+      # scale to corresponding desired foot positions (i.e. ranges in x,y,z we allow the agent to choose foot positions)
+      # [TODO: edit (do you think these should these be increased? How limiting is this?)]
+      scale_array = np.array([0.3, 0.15, 0.24]*4) #i suggest we triple these dimensions scale_array = np.array([0.1, 0.05, 0.08]*4)--->scale_array = np.array([0.3, 0.15, 0.24]*4)
+      # add to nominal foot position in leg frame (what are the final ranges?)
+      des_foot_pos = self._robot_config.NOMINAL_FOOT_POS_LEG_FRAME + scale_array*u
 
-    # get Cartesian kp and kd gains (can be modified)
-    kpCartesian = self._robot_config.kpCartesian
-    kdCartesian = self._robot_config.kdCartesian
-    # get current motor velocities
-    qd = self.robot.GetMotorVelocities()
+      # get Cartesian kp and kd gains (can be modified)
+      kpCartesian = self._robot_config.kpCartesian
+      kdCartesian = self._robot_config.kdCartesian
+      # get current motor velocities
+      qd = self.robot.GetMotorVelocities()
 
-    action = np.zeros(12)
-    for i in range(4):
-      # get Jacobian and foot position in leg frame for leg i (see ComputeJacobianAndPosition() in quadruped.py)
-      # [TODO]
-      J, current_foot_pos = self.robot.ComputeJacobianAndPosition(legID=i)
-      # desired foot position i (from RL above)
-      Pd = des_foot_pos[3 * i:3 * i + 3]  # Extract desired x, y, z for leg i # [TODO]
-      # desired foot velocity i
-      vd = np.zeros(3) #do we desire a particular foot velocity ? I read that to walk slowly we don't need to control it, but to run it would be nice, so let's start with 0
-      # foot velocity in leg frame i (Equation 2) see pdf J*q=v
-      # [TODO]
-      foot_vel = np.dot(J, qd[3 * i:3 * i + 3])  # Joint velocities to foot velocity 
+      action = np.zeros(12)
+      for i in range(4):
+          # Get Jacobian and foot position in leg frame for leg i
+          J, current_foot_pos = self.robot.ComputeJacobianAndPosition(legID=i)
+          
+          # Desired foot position for leg i (from RL above)
+          Pd = des_foot_pos[3 * i:3 * i + 3]
+          
+          # Desired foot velocity for leg i (can be adjusted based on movement strategy)
+          vd = np.zeros(3)  
+          
+          # Foot velocity in leg frame i (based on joint velocities qd)
+          foot_vel = np.dot(J, qd[3 * i:3 * i + 3])  # Joint velocities to foot velocity
+          
+          # Compute position and velocity errors in Cartesian space
+          position_error = Pd - current_foot_pos
+          velocity_error = vd - foot_vel
+          
+          # Compute Cartesian forces using PD gains
+          F_cartesian = kpCartesian @ position_error + kdCartesian @ velocity_error
+          
+          # Map Cartesian forces to joint torques using the Jacobian transpose
+          tau = J.T @ F_cartesian
+          
+          # Assign the calculated torques to the action vector for each leg (3 entries per leg)
+          action[3 * i:3 * i + 3] = tau
 
-      # calculate torques with Cartesian PD (Equation 5) [Make sure you are using matrix multiplications] #τCartesian = JT(q)hKp,Cartesian (pd − p) + Kd,Cartesian (vd − v)i
-      tau = np.dot(J.T, kpCartesian * (Pd - current_foot_pos) + kdCartesian * (vd - foot_vel)) # [TODO]
-
-      action[3*i:3*i+3] = tau
-
-    return action
+      return action
 
   def ScaleActionToCPGStateModulations(self,actions):
     """Scale RL action to CPG modulation parameters."""
@@ -596,8 +652,23 @@ class QuadrupedGymEnv(gym.Env):
       dist_to_goal, _ = self.get_distance_and_angle_to_goal()
       if dist_to_goal < 0.5:
         self._reset_goal()
+  
+    #foot position 
+    foot_pos = np.zeros((4,3))
+    for i in range(4): 
+      J, foot_pos[i,:] = self.robot.ComputeJacobianAndPosition(i)
 
-    return np.array(self._noisy_observation()), reward, done, {'base_pos': self.robot.GetBasePosition()} 
+    # energy 
+    tau = self.robot.GetMotorTorques()
+    vel = self.robot.GetMotorVelocities()
+    energy = np.abs(np.dot(tau, vel)) * self._time_step
+    # print("tau:", tau)
+    # print("joint vel:", vel)
+
+
+ 
+
+    return np.array(self._noisy_observation()), reward, done, {'base_pos': self.robot.GetBasePosition(), 'base_vel': self.robot.GetBaseLinearVelocity(), 'base_orientation': self.robot.GetBaseOrientationRollPitchYaw(), 'base_orientation_rate': self.robot.GetTrueBaseRollPitchYawRate(), 'foot_pos': foot_pos, 'energy':energy} 
 
   ######################################################################################
   # Reset
@@ -636,7 +707,7 @@ class QuadrupedGymEnv(gym.Env):
 
       if self._terrain is not None:
         if self._terrain == "SLOPES":
-          self.add_slopes(pitch=0.2)
+          self.add_slopes(pitch=0.3)
         elif self._terrain == "STAIRS":
           self.add_stairs(num_stairs=12, stair_height=0.05, stair_width=0.25)
         elif self._terrain == "GAPS":
@@ -713,12 +784,12 @@ class QuadrupedGymEnv(gym.Env):
     except:
       pass
     init_motor_angles = self._robot_config.INIT_MOTOR_ANGLES + self._robot_config.JOINT_OFFSETS
-    if self._is_render:
-      time.sleep(0.2)
+#    if self._is_render:
+#      time.sleep(0.2)
     for _ in range(1000):
       self.robot.ApplyAction(init_motor_angles)
-      if self._is_render:
-        time.sleep(0.001)
+#      if self._is_render:
+#        time.sleep(0.001)
       self._pybullet_client.stepSimulation()
     
     # set control mode back
@@ -967,7 +1038,7 @@ class QuadrupedGymEnv(gym.Env):
     block2=self._pybullet_client.createMultiBody(baseMass=0,baseCollisionShapeIndex = sh_colBox,
                           basePosition = [x_upp/2,-y_low,0.5],baseOrientation=orn)
 
-  def add_slopes(self, pitch=0.2):
+  def add_slopes(self, pitch=0.20):
     """Add slopes with platform in center."""
     y = 6
     slope_len = 2

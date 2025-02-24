@@ -38,6 +38,7 @@ from datetime import datetime
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
+#from stable_baselines3.common.vec_env import SubproVecEnv
 # utils
 from utils.utils import CheckpointCallback
 from utils.file_utils import get_latest_model
@@ -45,17 +46,18 @@ from utils.file_utils import get_latest_model
 from env.quadruped_gym_env import QuadrupedGymEnv
 
 
-LEARNING_ALG = "PPO" # or "SAC"
+#LEARNING_ALG = "PPO" # or "SAC"
 LOAD_NN = False # if you want to initialize training with a previous model 
 NUM_ENVS = 1    # how many pybullet environments to create for data collection
 USE_GPU = False # make sure to install all necessary drivers 
 
-LEARNING_ALG = "SAC";  USE_GPU = True
+LEARNING_ALG = "PPO";  USE_GPU = True
 # after implementing, you will want to test how well the agent learns with your MDP: 
-# env_configs = {"motor_control_mode":"CPG",
-#                "task_env": "FWD_LOCOMOTION", #  "LR_COURSE_TASK",
-#                "observation_space_mode": "LR_COURSE_OBS"}
-env_configs = {}
+env_configs = {"motor_control_mode":"CPG",#CARTESIAN_PD
+                "task_env": "LR_COURSE_TASK", #  "LR_COURSE_TASK",
+                "observation_space_mode": "LR_COURSE_OBS", 
+                "terrain": "SLOPES"}
+
 
 if USE_GPU and LEARNING_ALG=="SAC":
     gpu_arg = "auto" 
@@ -75,7 +77,7 @@ os.makedirs(SAVE_PATH, exist_ok=True)
 checkpoint_callback = CheckpointCallback(save_freq=30000, save_path=SAVE_PATH,name_prefix='rl_model', verbose=2)
 # create Vectorized gym environment
 env = lambda: QuadrupedGymEnv(**env_configs)  
-env = make_vec_env(env, monitor_dir=SAVE_PATH,n_envs=NUM_ENVS)
+env = make_vec_env(env, monitor_dir=SAVE_PATH,n_envs=NUM_ENVS) # vec_env_cls=SubprocVecEnv)
 # normalize observations to stabilize learning (why?)
 env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_obs=100.)
 

@@ -66,7 +66,7 @@ cpg = HopfNetwork(time_step=TIME_STEP, gait="TROT")
 # cpg = HopfNetwork(time_step=TIME_STEP, gait="BOUND")
 # cpg = HopfNetwork(time_step=TIME_STEP, gait="PACE")
 
-SECONDS_OF_SIMULATION = 10
+SECONDS_OF_SIMULATION = 1
 TEST_STEPS = int(SECONDS_OF_SIMULATION / (TIME_STEP))
 t = np.arange(TEST_STEPS)*TIME_STEP
 
@@ -77,13 +77,19 @@ CPG_states_legs = np.zeros((4, TEST_STEPS, 4))  # (4 variables, TEST_STEPS, 4 le
 actual_foot_pos = np.zeros((4, 3, TEST_STEPS))  # 4 legs, 3D (x, y, z), over time
 desired_foot_pos = np.zeros((4, 3, TEST_STEPS))  # To store desired positions
 desired_joint_angles = np.zeros((3, TEST_STEPS))  # To store desired joint angles for each leg
-actual_joint_angles = np.zeros((3, TEST_STEPS))   # To store actual joint angles for each leg3
+actual_joint_angles = np.zeros((3, TEST_STEPS))   # To store actual joint angles for each leg
+
+# Initialize storage for CPG states (r, θ, ̇r, ̇θ) for all legs
+CPG_states_r = np.zeros((4, TEST_STEPS))       # Store r for 4 legs over time
+CPG_states_theta = np.zeros((4, TEST_STEPS))  # Store θ for 4 legs over time
+CPG_states_dr = np.zeros((4, TEST_STEPS))     # Store ̇r for 4 legs over time
+CPG_states_dtheta = np.zeros((4, TEST_STEPS)) # Store ̇θ for 4 legs over time
 
 
 ############## Sample Gains
 # joint PD gains
-kp=np.array([100,100,100])
-kd=np.array([2,2,2])
+kp=np.array([200,200,200])
+kd=np.array([1,1,1])
 # Cartesian PD gains
 kpCartesian = np.diag([500]*3)
 kdCartesian = np.diag([20]*3)
@@ -93,6 +99,19 @@ for j in range(TEST_STEPS):
   action = np.zeros(12) 
   # get desired foot positions from CPG 
   xs,zs = cpg.update()
+
+  # Retrieve CPG states
+  r = cpg.get_r()
+  theta = cpg.get_theta()
+  dr = cpg.get_dr()
+  dtheta = cpg.get_dtheta()
+
+  # Save CPG states for each leg
+  CPG_states_r[:, j] = r
+  CPG_states_theta[:, j] = theta
+  CPG_states_dr[:, j] = dr
+  CPG_states_dtheta[:, j] = dtheta
+
   # print("xs: ", xs)
   # [TODO] get current motor angles and velocities for joint PD, see GetMotorAngles(), GetMotorVelocities() in quadruped.py
   q = env.robot.GetMotorAngles()
@@ -151,22 +170,35 @@ for j in range(TEST_STEPS):
 # suggest making subplots for each leg, and make sure these are at a scale where the states are clearly visible (for
 # example 2 gait cycles).
 
-fig, axs = plt.subplots(2, 2, figsize=(10, 8)) # -- TO REVIEW !!
+# Plotting CPG states after the simulation
+fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+fig.suptitle("CPG States Over Time", fontsize=16)
 
-labels = ['r', 'theta', 'r_dot', 'theta_dot']
+leg_labels = ['Front Right (FR)', 'Front Left (FL)', 'Rear Right (RR)', 'Rear Left (RL)']
+state_labels = ['r', 'θ', 'ṙ', 'θ̇']
 colors = ['b', 'g', 'r', 'c']
 
-for i in range(4):
-    ax = axs[i // 2, i % 2]  
-    for state in range(4):  
-        ax.plot(CPG_states_legs[state, :, i], label=f'{labels[state]}', color=colors[state])
-    ax.set_title(f'Leg {i + 1}')
-    ax.set_xlabel('Time Step')
-    ax.set_ylabel('CPG State Value')
-    ax.legend()
+for leg in range(4):  # For each leg
+    axs[0, 0].plot(t, CPG_states_r[leg, :], label=f'{leg_labels[leg]}', color=colors[leg])
+    axs[0, 1].plot(t, CPG_states_theta[leg, :], label=f'{leg_labels[leg]}', color=colors[leg])
+    axs[1, 0].plot(t, CPG_states_dr[leg, :], label=f'{leg_labels[leg]}', color=colors[leg])
+    axs[1, 1].plot(t, CPG_states_dtheta[leg, :], label=f'{leg_labels[leg]}', color=colors[leg])
 
-plt.tight_layout()
+# Add titles, labels, and legends
+axs[0, 0].set_title('r (Amplitude)')
+axs[0, 1].set_title('θ (Phase)')
+axs[1, 0].set_title('ṙ (Amplitude Derivative)')
+axs[1, 1].set_title('θ̇ (Phase Derivative)')
+
+for ax in axs.flat:
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Value")
+    ax.legend()
+    ax.grid()
+
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 plt.show()
+
 
 # 2) A plot comparing the desired foot position vs. actual foot position with/without joint PD and Cartesian PD (for
 # one leg is fine). What gains do you use, and how does this affect tracking performance?
