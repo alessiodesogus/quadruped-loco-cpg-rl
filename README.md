@@ -4,6 +4,8 @@ Welcome to **Quadruped-Sim**, a simulation environment for a quadruped robot!
 
 ---
 
+![Legged Robot](./img/legged-robot.png)  
+
 ## ✨ Installation
 
 It is recommended to use a virtual environment (virtualenv or conda) with Python 3.6 or higher.
